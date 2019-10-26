@@ -1,0 +1,238 @@
+---
+layout: post
+title:  "Continuous Integration With Gitlab CI"
+date:   2015-08-13 22:05:11
+categories: PHP Continuous integration gitlab CI docker
+---
+<img src="/assets/gitlabci/gitlabci.png" alt="gitlab ci">
+
+<h2>Existing Solutions</h2>
+<p>
+There are some fantastic tools available for continuous integration, particuarly for open source projects. Jenkins is probably the most popular; written in java its compatible with most operating systems and works with many languages. It also has multiple plugins so you're able to configure the system to suit you.
+</p>
+<p>
+Jenkins is however quite an old project. By default each project has operate within the state of the server, which might not accurately represent the server your application is going to end up being deployed on.
+</p>
+<p>
+Travis CI is a fantastic example of the next version of continuous integration tools. As each project is run in an individual virtual machine, you're able to define what version of the language you're running, the queue software and database to accurately mimic your server.
+</p>
+<p>
+This is fantastic to run your unit, functional and integration tests, and is completely free for open source projects. By integrating this software with the git software you're using, you can ensure that a branch you've created is working correctly before merging into master.
+</p>
+<p>
+Unfortunately Travis CI is quite an expensive solution if you have small projects you want to keep private, or you have a large number of projects which each have few commits.
+</p>
+
+<h3>Enter Gitlab CI... and Docker</h3>
+<p>
+Gitlab CI is a fantastic piece of software, which leverages docker images, to give you complete control over your environment. This means you can choose the type of server, software and memory you need to allocate to a project.
+</p>
+<p>
+As runners are attached to Gitlab CI, you can increase the number of runners on each project, and scale them as a project grows.
+</p>
+
+<h2>Setting up</h2>
+<p>
+For this example, we're going to configure Gitlab CI with Gitlab Enterprise.
+</p>
+
+<h3>Gitlab Enterprise</h3>
+<p>
+Gitlab enterprise is available as a free service with unlimited private repositories. This is a great solution for agencies who need to manage multiple projects across several developers.
+</p>
+<p>
+It can also be self hosted, so if security is a concern, that is always an option.
+</p>
+
+<ul>
+    <li>Sign up for an account over at <a href="http://www.gitlab.com" target="_blank">Gitlab</a></li>
+    <li>Create a repository and push some stuff onto it</li>
+</ul>
+
+<h4>Gitlab CI</h4>
+<p>
+As you now already are registered with a gitlab account, you can access Gitlab CI by accessing <a href="http://ci.gitlab.com" target="_blank">ci.gitlab.com</a>.
+</p>
+<p>
+Add your newly created project to the tool by clicking "Add project to CI".
+</p>
+<p>
+Click on runners in the left navigation menu, where you can copy your registration token (you'll need this in the next step).
+</p>
+
+<h3>Create a Runner</h3>
+<p>
+Gitlab CI needs a runner from you to be able to carry out some operation. Gitlab (the company) provides a service written in go which uses Docker to "contain" that image.
+What we're aiming to contain within this example is:
+</p>
+<ul>
+    <li>An Apache server</li>
+    <li>PHP 5.6</li>
+    <li>MySQL</li>
+    <li>MailCatcher</li>
+</ul>
+
+<h4>Server Setup</h4>
+
+<a href="https://www.digitalocean.com/?refcode=72661a1914c1" target="_blank" onclick="ga('send', 'event', 'referal', 'click', 'Digital Ocean', '25');">Digital Ocean</a> provide low cost servers you can configure for multiple services. For small companies, a server with a single core (meaning you can only carry out one runner at a time) should work well for most purposes. So in this instance, we're going to be setting up a $10 a month server. This is a recommended specification from Gitlab themselves, though the bare minimum is a 512mb server.
+<p>
+
+
+The server needs to be the x64 version, as docker isn't compatible with the 386 architecture. Here, I've chosen Ubuntu 14.04.
+</p><p>
+You can add your public key here or if you prefer, create without and you'll be emailed your password.
+</p><p>
+After you press create droplet, it'll take about 30 seconds to setup your VPS (Virtual Private Server).
+</p>
+
+<h4>Runner Setup</h4>
+<p>
+SSH into your new server. Update aptitude and install the runner by executing:
+</p>
+{% highlight bash %}
+apt-get update \
+curl -sSL https://get.docker.com/ | sh \
+curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-ci-multi-runner/script.deb.sh | sudo bash \
+apt-get install gitlab-ci-multi-runner -y
+{% endhighlight %}
+
+<p>
+Now you'll need to register the runner you configured earlier.
+Run:
+</p>
+
+{% highlight bash %}
+gitlab-ci-multi-runner register
+{% endhighlight %}
+
+<p>
+Register the runner:
+</p>
+
+{% highlight bash %}
+Please enter the gitlab-ci coordinator URL (e.g. http://gitlab-ci.org:3000/ )
+https://ci.gitlab.org/
+Please enter the gitlab-ci token for this runner
+[The token you generated earlier]
+Please enter the gitlab-ci description for this runner
+my-runner
+INFO[0034] fcf5c619 Registering runner... succeeded
+Please enter the executor: shell, docker, docker-ssh, ssh?
+docker
+Please enter the Docker image (eg. ruby:2.1):
+ubuntu
+{% endhighlight %}
+<p>
+Apply the key you took from the GitLab CI website from the previous step.
+</p>
+
+<h4>Runner Image</h4>
+<p>
+Now we've setup the runner, we can work on the image. As previously stated, the image is a docker container which we're going to configure to lose its state after the build has completed.
+</p><p>
+As we've already installed docker in the last step, we can work on our docker file. This is a file which defines which packages we want to install for our container.
+</p><p>
+As we're mainly concerned about running tests then losing state, we're going to configure docker to install all these dependancies within a single configuration file. However if you begin to look further into using docker you'd likely separate these out.
+</p>
+
+<h4>Dockerfile</h4>
+
+{% highlight bash %}
+FROM ubuntu:14.04
+
+RUN apt-get update -y
+RUN apt-get install apache2 make build-essential -y
+RUN apt-get install mysql-server libapache2-mod-auth-mysql php5-mysql curl wget git -y
+RUN apt-get install php5 libapache2-mod-php5 php5-mcrypt php5-mysql php5-curl php5-gd php5-intl php-pear php5-imagick php5-imap php5-mcrypt php5-memcache php5-ming php5-ps php5-pspell php5-recode php5-sqlite php5-tidy php5-xmlrpc php5-xsl -y
+
+RUN apt-get install ruby1.9.1-dev libsqlite3-dev -y
+RUN gem install mailcatcher
+
+RUN export DEBIAN_FRONTEND=noninteractive
+RUN curl -sS https://getcomposer.org/installer | php
+
+EXPOSE 22 80
+CMD ["/usr/sbin/apache2ctl -D FOREGROUND"]
+{% endhighlight %}
+<p>
+Here we're installing apache, mysql, ruby, and mailcatcher. These tools are adequate for our needs, but we can update this whenever we need to. Save this as "Dockerfile".
+</p>
+
+<h4>Build</h4>
+<p>
+Now we need to build the file. You can do this by changing to the directory containing the Dockerfile and running:
+</p>
+{% highlight bash %}
+docker build -t "php56" .
+{% endhighlight %}
+</p><p>
+The "php56" is the name of the image you're creating. This can be whatever you want. You can create multiple builds with several docker files if you have different environments you'd like to test.
+</p>
+
+<h4>Final configuration</h4>
+
+<p>
+Finally we need to tell the CI tool what images it's allowed to run. Although Docker Inc. have updated docker to prevent container breakout, we don't really want to allow any images to run on the server. By default this is disabled, and the image provided will be the image defined when defining the runner.
+</p>
+
+<h4>/etc/gitlab-runner/config.toml</h4>
+
+{% highlight toml %}
+[[runners]]
+  name = "docker-lamp"
+  url = "https://ci.gitlab.com/"
+  token = "28fj239jf2983jf283j9283jf98j382j3"
+  limit = 1
+  executor = "docker"
+  environment = ["MYSQL_ALLOW_EMPTY_PASSWORD=1"]
+  [runners.docker]
+    image = "ubuntu"
+    allowed_images = ["php56"]
+{% endhighlight %}
+<p>
+Here we've defined the image we built earlier can be used with Gitlab CI under allowed_images. This can be replaced with a "*" if you'd prefer to run any image.
+</p>
+
+<h2>Enable The Runner</h2>
+<p>
+Now we've done all that admin work, we can enable the runner on the Gitlab CI website.
+</p>
+
+<h2>Setup a .gitlab-ci.yml file</h2>
+<p>
+We've finished setting up our runner, so now we can begin running tests! Our image already contains the majority of services we need, so we just need to create a file which defines how to run our tests. This file is placed in our projects repository and is committed into version control (in the root of the project).
+</p>
+
+<h3>.gitlab-ci.yml</h3>
+{% highlight toml %}
+image: php56
+
+before_script:
+    - service mysql start
+    - echo "create database laravel" | mysql -u root
+    - mysql -u root laravel < "sql/laravel.sql"
+    - echo "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('root');" | mysql -u root
+    - php /composer.phar install --no-progress
+job1:
+    script:
+        - php artisan migrate
+        - vendor/bin/phpunit tests
+{% endhighlight %}
+
+<h2>Finishing Up</h2>
+<p>
+As we've already configured the service to run with our runner, so the next time you commit to the project, the projects tasks will be run and you will be able to view the status of each build on the GitLab CI website.
+</p>
+<img src="/assets/gitlabci/success.png" />
+<p>
+Merge requests will now also have the additional merge status field which will tell you whether you should merge your branch into master.
+</p><p>
+Build badges are also generated, which are a nice extra to quickly view the status of a project.
+</p><p>
+As you can see, the Gitlab CI tool is very powerful, as you could define multiple environments, with different versions of software which could run on the same server, and are quickly provisioned thanks to the Docker container.
+</p>
+
+<h2>Some Freebies</h2>
+<p>
+    If you want to have a play around with Digital Ocean, following my <a href="https://www.digitalocean.com/?refcode=72661a1914c1" target="_blank" onclick="ga('send', 'event', 'referal', 'click', 'Digital Ocean', '25');">affiliate link</a> will give you $10 free.
+</p>

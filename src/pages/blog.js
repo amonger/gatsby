@@ -13,13 +13,17 @@ const IndexPage = ({data}) => (
     {data.allMarkdownRemark.edges.map(post => (
       <div>
         <h1>{post.node.frontmatter.title}</h1>
+        <p>
+          {post.node.excerpt}
+        </p>
+        <Link to={post.node.frontmatter.path}>Read More...</Link>
       </div>
     ))}
   </Layout>
 )
 
 export const pageQuery = graphql`
-query MyQuery {
+query MyQueryi {
   allMarkdownRemark {
     edges {
       node {
